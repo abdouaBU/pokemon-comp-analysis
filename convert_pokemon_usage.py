@@ -8,6 +8,7 @@ txt files with pipe-delimited columns and extract Pokemon names and Usage %.
 import pandas as pd
 from decimal import Decimal
 from pathlib import Path
+import argparse
 
 
 def parse_pokemon_usage_txt(input_file, output_file=None):
@@ -89,18 +90,105 @@ def parse_pokemon_usage_txt(input_file, output_file=None):
 
 
 if __name__ == '__main__':
-    import sys
+    parser = argparse.ArgumentParser(
+        description='Convert Pokemon usage txt files to pandas-compatible CSV format.'
+    )
+    parser.add_argument(
+        'input_file',
+        nargs='?',
+        help='Input txt file to convert'
+    )
+    parser.add_argument(
+        'output_file',
+        nargs='?',
+        help='Output CSV file (optional)'
+    )
+    parser.add_argument(
+        '--directory',
+        '-d',
+        help='Directory containing multiple txt files to convert'
+    )
     
-    if len(sys.argv) < 2:
+    args = parser.parse_args()
+    
+    # Process directory if --directory flag is provided
+    if args.directory:
+        directory_path = Path(args.directory)
+        
+        if not directory_path.is_dir():
+            print(f"Error: '{args.directory}' is not a valid directory")
+            exit(1)
+        
+        # Find all txt files
+        txt_files = list(directory_path.glob('*.txt'))
+        
+        if not txt_files:
+            print(f"No txt files found in '{args.directory}'")
+            exit(1)
+        
+        # Track output filenames to detect conflicts
+        output_paths = {}
+        conflicts = set()
+        
+        for txt_file in txt_files:
+            # Default output path (same name, .csv extension)
+            output_path = txt_file.with_suffix('.csv')
+            
+            # Check for conflicts
+            if output_path in output_paths.values():
+                conflicts.add(output_path)
+            
+            output_paths[txt_file] = output_path
+        
+        # For conflicting files, use indexed naming convention
+        processed_conflicts = {}
+        for txt_file in txt_files:
+            output_path = output_paths[txt_file]
+            
+            if output_path in conflicts:
+                # Use default naming convention: pokemon_usage_1.csv, pokemon_usage_2.csv, etc.
+                if output_path not in processed_conflicts:
+                    processed_conflicts[output_path] = 1
+                else:
+                    processed_conflicts[output_path] += 1
+                
+                index = processed_conflicts[output_path]
+                output_path = output_path.parent / f"{output_path.stem}_{index}.csv"
+            
+            output_paths[txt_file] = output_path
+        
+        # Process all files
+        print(f"Processing {len(txt_files)} txt file(s) from '{args.directory}'...\n")
+        
+        for txt_file in txt_files:
+            output_path = output_paths[txt_file]
+            try:
+                df = parse_pokemon_usage_txt(txt_file, output_path)
+                print()
+            except Exception as e:
+                print(f"Error processing {txt_file.name}: {e}\n")
+    
+    # Process single file if provided
+    elif args.input_file:
+        if not args.input_file:
+            print("Usage: python convert_pokemon_usage.py <input_file> [output_file]")
+            print("   or: python convert_pokemon_usage.py --directory <directory>")
+            print("\nExamples:")
+            print("  python convert_pokemon_usage.py pkmnusage.txt")
+            print("  python convert_pokemon_usage.py pkmnusage.txt output.csv")
+            print("  python convert_pokemon_usage.py --directory ./data")
+            exit(1)
+        
+        output_file = args.output_file if args.output_file else None
+        df = parse_pokemon_usage_txt(args.input_file, output_file)
+        print("\nFirst few rows:")
+        print(df.head())
+    
+    else:
         print("Usage: python convert_pokemon_usage.py <input_file> [output_file]")
-        print("\nExample:")
+        print("   or: python convert_pokemon_usage.py --directory <directory>")
+        print("\nExamples:")
         print("  python convert_pokemon_usage.py pkmnusage.txt")
         print("  python convert_pokemon_usage.py pkmnusage.txt output.csv")
-        sys.exit(1)
-    
-    input_file = sys.argv[1]
-    output_file = sys.argv[2] if len(sys.argv) > 2 else None
-    
-    df = parse_pokemon_usage_txt(input_file, output_file)
-    print("\nFirst few rows:")
-    print(df.head())
+        print("  python convert_pokemon_usage.py --directory ./data")
+        exit(1)
